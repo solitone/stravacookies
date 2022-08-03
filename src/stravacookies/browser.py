@@ -7,6 +7,7 @@ AUTH_URL = "https://heatmap-external-a.strava.com/auth"
 class StravaBrowser(object):
     def __init__(self):
         self.browser = mechanize.Browser()
+        self.browser.set_handle_robots(False)
         self.cookiejar = cookiejar.CookieJar()
         self.browser.set_cookiejar(self.cookiejar)
 
