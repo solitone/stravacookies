@@ -1,10 +1,9 @@
-import os
-import subprocess
-import sys
+"""Backwards-compatible interface for retrieving signed heatmap parameters."""
+from .browser import StravaBrowser, COOKIE_NAMES
+from .fetch_error import StravaCFetchCookieError
 
-from stravacookies import StravaBrowser, StravaCFetchError, StravaCFetchCookieError, StravaCFetchOsError, StravaCFetchJosmprefsError
 
-class StravaCookieFetcher(object):
+class StravaCookieFetcher:
     def __init__(self):
         self.deleteCookieInfo()
 
@@ -15,38 +14,40 @@ class StravaCookieFetcher(object):
         self.cookieString = ""
 
     def setCookieString(self):
-        if (self.keyPairId == "" or self.policy == "" or self.signature == ""):
-            message = "setCookieString() must be called after fetchCookies()"
-            raise StravaCFetchCookieError(message)
-        self.cookieString = "Key-Pair-Id=" + self.keyPairId + "&Policy=" + self.policy + "&Signature=" + self.signature
+        if not all((self.keyPairId, self.policy, self.signature)):
+            raise StravaCFetchCookieError(
+                "setCookieString() must be called after fetchCookies()")
+        self.cookieString = ("Key-Pair-Id=" + self.keyPairId + "&Policy=" + self.policy
+                             + "&Signature=" + self.signature)
 
     def getCookieString(self):
         return self.cookieString
 
     def processCookieJar(self, cookiejar):
-        for cookie in cookiejar:
-            if "CloudFront-Key-Pair-Id" in cookie.name:
-                self.keyPairId = cookie.value
-            elif "CloudFront-Policy" in cookie.name:
-                self.policy = cookie.value
-            elif "CloudFront-Signature" in cookie.name:
-                self.signature = cookie.value
-        if (self.keyPairId == "" or self.policy == "" or self.signature == ""):
-            self.deleteCookieInfo()
-            message = "Authentication Strava cookies not found."
-            raise StravaCFetchCookieError(message)
+        self.deleteCookieInfo()
+        values = {cookie.name: cookie.value for cookie in cookiejar
+                  if cookie.name in COOKIE_NAMES and not cookie.is_expired()}
+        if not all(values.get(name) for name in COOKIE_NAMES):
+            raise StravaCFetchCookieError("Authentication Strava cookies not found.")
+        self.keyPairId = values["CloudFront-Key-Pair-Id"]
+        self.policy = values["CloudFront-Policy"]
+        self.signature = values["CloudFront-Signature"]
         self.setCookieString()
 
-    def fetchCookies(self, stravaEmail, stravaPassword):
-        try:
-            browser = StravaBrowser()
-            browser.stravaLogin(stravaEmail, stravaPassword)
-            self.processCookieJar(browser.cookiejar)
-        except StravaCFetchCookieError as e:
-            print(e, file=sys.stderr)
-            message = "Logged in successfully, but could not get authentication cookies."
-            raise StravaCFetchCookieError(message)
-        except Exception as e:
-            print(e, file=sys.stderr)
-            message = "Make sure to provide correct Strava login information."
-            raise StravaCFetchCookieError(message)
+    def fetchCookies(self, stravaEmail, stravaPassword, **browser_options):
+        """Log in using Chromium. Existing two-argument calls remain valid."""
+        self.deleteCookieInfo()
+        browser = StravaBrowser(**browser_options)
+        browser.stravaLogin(stravaEmail, stravaPassword)
+        self.processCookieJar(browser.cookiejar)
+
+    def fetchCookiesFromBrowser(self, context):
+        """Fetch from an already authenticated Playwright BrowserContext.
+
+        Useful for email-code, CAPTCHA or federated login completed by the user.
+        The caller owns the browser and is responsible for closing it.
+        """
+        self.deleteCookieInfo()
+        browser = StravaBrowser()
+        browser.cookiesFromContext(context)
+        self.processCookieJar(browser.cookiejar)
