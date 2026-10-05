@@ -10,7 +10,7 @@ tiles in applications such as [JOSM](https://josm.openstreetmap.de) and
 Python 3.9 or later and a Strava account are required:
 
 ```sh
-python -m pip install stravacookies
+python -m pip install "stravacookies @ git+https://github.com/solitone/stravacookies.git@v2.0.0"
 python -m playwright install chromium
 ```
 
