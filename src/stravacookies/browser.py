@@ -1,5 +1,6 @@
 """Authenticate using Strava's JavaScript login and request legacy TMS cookies."""
 from http import cookiejar
+from urllib.parse import urlsplit
 
 from playwright.sync_api import Error as PlaywrightError, TimeoutError, sync_playwright
 
@@ -97,9 +98,9 @@ class StravaBrowser:
                         raise StravaCFetchCookieError(
                             "Strava requires an email verification code. Complete "
                             "login in a browser and use fetchCookiesFromBrowser(context).")
-                    # English locale is set when creating the context. Do not
-                    # select the button that emails an OTP / changes login mode.
-                    page.get_by_role("button", name="Use password", exact=False).click()
+                    # Account settings can switch the page language after email
+                    # submission even when the browser locale is English.
+                    page.locator('[data-testid="use-password-cta"]:visible').click()
                 password_input.fill(password)
                 with page.expect_response(
                     lambda r: r.url.split("?")[0] == "https://www.strava.com/session"
@@ -108,12 +109,24 @@ class StravaBrowser:
                     password_input.locator("xpath=ancestor::form").locator(
                         'button[type="submit"]').click()
                 response = pending.value
-                if response.status != 200 or not response.json().get("success"):
+                if response.status != 200:
                     raise StravaCFetchCookieError(
                         "Strava did not accept the login. Check the credentials "
                         "or complete the required verification in a browser.")
-                page.wait_for_url(lambda url: "/login" not in url,
-                                  wait_until="domcontentloaded")
+                # A successful login may immediately navigate across page
+                # processes, making the response body unavailable over CDP.
+                # A 200 alone is NOT proof: require a same-site redirect and
+                # authenticated /auth cookies below instead of reading JSON.
+                try:
+                    page.wait_for_url(
+                        lambda url: urlsplit(url).hostname == "www.strava.com"
+                        and not urlsplit(url).path.startswith("/login"),
+                        wait_until="domcontentloaded")
+                except TimeoutError:
+                    raise StravaCFetchCookieError(
+                        "Strava did not complete the login. Check the credentials "
+                        "or complete the required verification in a browser."
+                    ) from None
             self.cookiesFromContext(context)
         finally:
             page.close()
