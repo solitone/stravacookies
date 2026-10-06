@@ -86,7 +86,7 @@ agreements. It does not close a browser/context supplied by the caller.
 ## What changed since 1.3
 
 Strava replaced its static login form with a JavaScript-driven, multi-step flow.
-`mechanize` can no longer find the password field. Version 1.4 uses Playwright
+`mechanize` can no longer find the password field. Version 2 uses Playwright
 instead and requires Python 3.9+ and a browser installation.
 
 After login, the library requests `https://heatmap-external-a.strava.com/auth`
@@ -116,6 +116,12 @@ credentials or contact Strava. On 2026-10-05, login through an existing Chrome
 browser and `fetchCookiesFromBrowser(context)` were verified live, including a
 successful legacy TMS zoom-15 PNG download. The fully automatic fresh-browser
 path encountered Strava HTTP 403 and is not claimed to work reliably.
+
+A [2026-10-06 investigation](docs/login-investigation-2026-10-06.md) identified
+and corrected translated-button and post-login response-body handling bugs.
+A scripted fresh-profile login reached authenticated state, but cold-start
+attempts still returned 403 and the new end-to-end tile probe was not successful.
+These changes are **not** a reliable-login fix.
 
 ## Licence
 

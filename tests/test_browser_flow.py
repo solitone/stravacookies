@@ -24,7 +24,7 @@ document.querySelector('form').onsubmit = async e => {
  const r = await fetch('/login/request_otp', {method:'POST'});
  const data = await r.json();
  if (r.ok && data.use_password) {
-  document.body.innerHTML = '<button>Use password</button><button>Email me a code</button>';
+  document.body.innerHTML = '<button data-testid="use-password-cta">Usa la password</button><button>Email me a code</button>';
   document.querySelector('button').onclick = passwordForm;
  }
 };
@@ -46,18 +46,23 @@ def context():
         browser.close()
 
 
-def simulate(context, *, otp_status=200, use_password=True, success=True):
+def simulate(context, *, otp_status=200, use_password=True, success=True,
+             redirect_without_json=False, redirect_url="/dashboard"):
     calls = []
+    html = LOGIN.replace("'/dashboard'", repr(redirect_url))
+    if redirect_without_json:
+        html = html.replace('const data = await r.json();\n  if (data.success)',
+                            'if (r.ok)')
     def route(request):
         path = request.request.url.split('.com', 1)[-1]
         calls.append(path)
         if path == '/login':
-            request.fulfill(content_type='text/html', body=LOGIN)
+            request.fulfill(content_type='text/html', body=html)
         elif path == '/login/request_otp':
             request.fulfill(status=otp_status, content_type='application/json',
                             body=json.dumps({'use_password':use_password}))
         elif path == '/session':
-            request.fulfill(content_type='application/json', body=json.dumps({'success':success}))
+            request.fulfill(content_type='application/json', body='unavailable-json' if redirect_without_json else json.dumps({'success':success}))
         elif path == '/auth':
             request.fulfill(body='authorized')
         else:
@@ -88,7 +93,7 @@ def test_two_step_login(context):
 @pytest.mark.parametrize('settings,message', [
     ({'otp_status':403}, 'HTTP 403'),
     ({'use_password':False}, 'email verification code'),
-    ({'success':False}, 'did not accept'),
+    ({'success':False}, 'did not complete'),
 ])
 def test_login_errors_are_actionable(context, settings, message):
     calls = simulate(context, **settings)
@@ -110,3 +115,22 @@ def test_remembered_login():
     browser.cookiesFromContext.assert_called_once_with(context)
     page.locator.assert_not_called()
     page.close.assert_called_once_with()
+
+
+def test_login_redirect_does_not_require_response_json(context):
+    # A redirect may discard the /session body in Chromium. The page itself
+    # navigates here without parsing JSON; auth must still be checked afterward.
+    calls = simulate(context, redirect_without_json=True)
+    browser = StravaBrowser(timeout=5000)
+    auth_stub(browser, calls)
+    browser._login(context, 'test@example.invalid', 'dummy-password')
+    assert 'legacy-auth-after-login' in calls
+
+
+def test_cross_site_redirect_is_not_login_success(context):
+    calls = simulate(context, redirect_url='https://example.invalid/landing')
+    browser = StravaBrowser(timeout=1500)
+    auth_stub(browser, calls)
+    with pytest.raises(StravaCFetchCookieError, match='did not complete'):
+        browser._login(context, 'test@example.invalid', 'dummy-password')
+    assert 'legacy-auth-after-login' not in calls
