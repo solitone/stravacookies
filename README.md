@@ -119,9 +119,10 @@ path encountered Strava HTTP 403 and is not claimed to work reliably.
 
 A [2026-10-06 investigation](docs/login-investigation-2026-10-06.md) identified
 and corrected translated-button and post-login response-body handling bugs.
-A scripted fresh-profile login reached authenticated state, but cold-start
-attempts still returned 403 and the new end-to-end tile probe was not successful.
-These changes are **not** a reliable-login fix.
+Follow-up controlled trials completed two fresh-profile logins and independent
+PNG downloads without manual input, but subsequent cold starts still returned
+403 with the same normal Chrome setup. These changes are **not** a reliable-login
+fix; the investigation records the successful and failed cases separately.
 
 ## Licence
 

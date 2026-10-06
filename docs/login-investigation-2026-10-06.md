@@ -1,6 +1,66 @@
 # Fresh-session login investigation — 2026-10-06
 
-## Result: unresolved reliability
+## Follow-up controlled analysis — 08:39–08:43 Europe/Rome
+
+**New evidence: two fresh-session logins completed end-to-end, including an
+independent HTTP 200 PNG tile download (142,787 bytes each).** Both started with
+zero cookies in isolated profiles, used the stored email/password automatically,
+and involved no manual login, inbox access, imported session, or CAPTCHA solving.
+This supersedes the earlier absence of a fresh-login PNG proof, but **not** the
+conclusion that reliability is unresolved.
+
+Same installed Chrome 149.0.7827.103, visible window, Italian locale, device,
+network, account, UI-driven form submission and response-stage diagnostics:
+
+| Trial | Launcher | navigator.webdriver | Email | Password | Independent tile |
+| --- | --- | --- | --- | --- | --- |
+| A | Normal Chrome + local CDP | false | 200 | 200 | 200, PNG |
+| B | Normal Chrome + local CDP | false | 200 | 200 | 200, PNG |
+| C | Playwright, same Chrome binary | true | 403 | not submitted | not attempted |
+| D | Normal Chrome + local CDP | false | 403 | not submitted | not attempted |
+| E | Normal Chrome + local CDP | false | 403 | not submitted | not attempted |
+
+The rejected email responses were captured before the site's automatic reload:
+`{"success":false,"details":{}}`. Requests contained a reCAPTCHA response and a
+CSRF header, with an empty `country` honeypot field. In trial E the outgoing CSRF
+header was compared in memory with the page's current CSRF meta value and matched.
+No token or cookie values were logged. This rules out an absent/mismatched page
+CSRF value in that trial, not every possible server-side CSRF/session error.
+
+### What follows from the comparison
+
+- A blanket inability to automate Strava login is disproved for this account:
+  two complete automated runs succeeded.
+- `navigator.webdriver` alone cannot explain all rejections: D and E failed with
+  it false. It could still be one input to a broader decision.
+- Wrong passwords or email OTP entry do not explain these specific failures:
+  the rejection precedes password submission or an OTP entry screen.
+- The public frontend handles email HTTP 403 as `login_failed_trust`. A dynamic
+  trust/risk decision (potentially including reCAPTCHA, request history, account
+  or network signals) is consistent with the observations, **not established as
+  the exact server-side cause**. Strava exposes neither an assessment score nor
+  a rejection reason in these responses.
+- A reCAPTCHA token being present does not establish a valid/acceptable backend
+  assessment. Google's documentation distinguishes validity, expected action,
+  risk score and reasons; these assessments are returned to the site backend.
+
+### Controls and limitations
+
+This is a small ordered diagnostic sample, not a measured success rate or a
+randomized experiment. The launcher changes several browser defaults at once;
+no flag was individually toggled. Additional header inspection was enabled in
+C/D, then removed in E; E still failed. The CSRF comparison was added in E.
+All such instrumentation differences are explicit and prevent claiming perfect
+experimental isolation. Temporal/rate effects have not been independently tested.
+No stealth flags, fingerprint spoofing, proxy rotation, CAPTCHA-solving services
+or artificial human-behavior simulation were used. Further bursts of login
+attempts would add confounding rather than establish causality.
+
+Reference: https://docs.cloud.google.com/recaptcha/docs/interpret-assessment-website
+
+---
+
+## Initial investigation (06:21–06:33): unresolved reliability
 
 This investigation does **not** establish a reliable unattended login or a
 solution for a public multi-user service. Keep the HTTP 403 issue open.
